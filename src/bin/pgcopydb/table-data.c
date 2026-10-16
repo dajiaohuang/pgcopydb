@@ -610,11 +610,20 @@ copydb_copy_supervisor_add_table_hook(void *ctx, SourceTable *table)
 		 * their own partition number that starts at 1 (not zero).
 		 *
 		 * Before adding the table to be processed by workers, truncate it on
-		 * the target database now, avoiding concurrency issues.
+		 * the target database now, avoiding concurrency issues. On resume,
+		 * preserve completed parts: workers skip those parts using the summary.
 		 */
+		CopyTableDataSpec tableSpecs = { .sourceTable = table };
+
+		if (!summary_table_count_parts_done(&(specs->catalogs.source), &tableSpecs))
+		{
+			return false;
+		}
+
 		bool granted = false;
 
-		if (!pgsql_has_table_privilege(dst, table->qname, "TRUNCATE", &granted))
+		if (tableSpecs.countPartsDone == 0 &&
+			!pgsql_has_table_privilege(dst, table->qname, "TRUNCATE", &granted))
 		{
 			/* errors have already been logged */
 			return false;
